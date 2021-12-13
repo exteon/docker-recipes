@@ -158,7 +158,9 @@
                     $image
                 );
                 if ($dockerfile) {
-                    $service['build'] = [];
+                    if(!is_array($service['build'])){
+                        $service['build'] = [];
+                    }
                     $service['build']['context'] =
                         $absolutePath ?
                             $contextPath :
