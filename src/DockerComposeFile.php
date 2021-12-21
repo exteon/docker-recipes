@@ -158,7 +158,7 @@
                     $image
                 );
                 if ($dockerfile) {
-                    if(!is_array($service['build'])){
+                    if(!is_array($service['build'] ?? null)){
                         $service['build'] = [];
                     }
                     $service['build']['context'] =
