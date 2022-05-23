@@ -3,6 +3,7 @@
     namespace Exteon\DockerRecipes;
 
     use Exception;
+    use Exteon\FileHelper;
 
     class DockerfileCompiler
     {
@@ -36,7 +37,7 @@
         /**
          * @throws Exception
          */
-        public function compile(bool $absolutePath = false): void
+        public function compile(): void
         {
             if($this->locators){
                 /** @var Template[] $templates */
@@ -54,11 +55,16 @@
                         $this->locators
                     )
                 );
+                if(
+                    file_exists($this->targetDir) &&
+                    !FileHelper::rmDir($this->targetDir,false)
+                ){
+                    throw new \RuntimeException('Could not clean target dir');
+                }
                 foreach ($this->getDockerfiles() as $dockerfile) {
                     $dockerfile->compile(
                         new TemplateCompileContext($templates, $this->sourceRoot),
-                        $this->targetDir,
-                        $absolutePath
+                        $this->targetDir
                     );
                 }
             }

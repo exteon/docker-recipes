@@ -4,6 +4,7 @@
 
     use Exception;
     use Exteon\FileHelper;
+    use RuntimeException;
 
     class Template
     {
@@ -33,25 +34,56 @@
         /**
          * @throws Exception
          */
-        public function getCompiled(
+        public function compile(
             TemplateCompileContext $context,
-            bool $absolutePath = false
+            string $targetDir
         ): string {
             $context->setTemplateUsed($this);
+            $TEMPLATE_DIR = $this->getName();
+            $contextPath = FileHelper::getDescendPath($targetDir, $TEMPLATE_DIR);
+
+            {
+                /**
+                 * Copy contexts into target context because Docker doesn't support following symlinks outside of
+                 * context.
+                 *
+                 * This won't be necessary pending https://github.com/docker/compose/issues/9461
+                 *
+                 * #hack
+                 */
+                $descendants = array_filter(
+                    FileHelper::getDescendants($this->dir),
+                    fn(string $path): bool => ($path != $this->path)
+                );
+                if (
+                    $descendants &&
+                    !is_dir($contextPath)
+                ) {
+                    if(!FileHelper::preparePath($contextPath)){
+                        throw new RuntimeException('Could not create context dir');
+                    }
+                    foreach ($descendants as $descendantPath) {
+                        $relPath = FileHelper::getRelativePath($descendantPath, $this->dir);
+                        $descendantContextPath = FileHelper::getDescendPath($contextPath, $relPath);
+                        if (is_dir($descendantPath)) {
+                            if (!mkdir($descendantContextPath)) {
+                                throw new RuntimeException('Could not create context directory');
+                            }
+                        } else {
+                            if (!copy($descendantPath, $descendantContextPath)) {
+                                throw new \RangeException('Could not copy context file');
+                            }
+                        }
+                    }
+                }
+            }
+
             $content = $this->getContent();
-            $TEMPLATE_DIR =
-                $absolutePath ?
-                    realpath($this->dir) :
-                    FileHelper::getRelativePath(
-                        $this->dir,
-                        $context->getContextPath(),
-                        true
-                    );
             $content = $this->replaceTemplateDirVariable(
                 $content,
                 $TEMPLATE_DIR
             );
-            $content = $this->parseTemplates($content, $context, $absolutePath);
+            $content = $this->parseTemplates($content, $context, $targetDir);
             return $content;
         }
 
@@ -74,18 +106,17 @@
         /**
          * @param string $content
          * @param TemplateCompileContext $context
-         * @param bool $absolutePath
          * @return string
          * @throws Exception
          */
         private function parseTemplates(
             string $content,
             TemplateCompileContext $context,
-            bool $absolutePath
+            string $targetDir
         ): string {
             return preg_replace_callback(
                 '`^#TEMPLATE\\[\\s*(\\S*?)\\s*]\\s*$`m',
-                function ($match) use ($context, $absolutePath): string {
+                function ($match) use ($context, $targetDir): string {
                     $templateName = trim($match[1]);
                     $template = $this->pickTemplate($templateName, $context);
                     if (!$template) {
@@ -96,7 +127,7 @@
                     }
                     return
                         "# Compiled from template $templateName ({$template->getPath()})\n" .
-                        $template->getCompiled($context, $absolutePath);
+                        $template->compile($context, $targetDir);
                 },
                 $content
             );

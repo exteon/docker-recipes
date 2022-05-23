@@ -166,14 +166,12 @@ instanced as:
  * @param string $dockerfilesTargetDir
  * @param string $composeFileTargetPath
  * @param string $sourceRoot
- * @param bool $absolutePathSourceRoot
  */
 public function __construct(
     array $locators,
     string $dockerfilesTargetDir,
     string $composeFileTargetPath,
-    string $sourceRoot,
-    bool $absolutePathSourceRoot = false
+    string $sourceRoot
 )
 ```
 
@@ -193,9 +191,6 @@ project root will be kept relative and thus will be portable, while any paths
 outside the project root will be kept absolute and when porting the project you
 need to make sure that the outside paths are still available. The `$sourceRoot`
 will also be used as the `context` directory for the built images.
-
-`$absolutePathSourceRoot` overrides the behavior of `$sourceRoot`, making all 
-compiled paths absolute.
 
 To compile the images / compose files, you use:
 

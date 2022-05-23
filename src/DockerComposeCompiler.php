@@ -20,22 +20,17 @@
         /** @var string */
         private $composeFileTargetPath;
 
-        /** @var bool */
-        private $absolutePath;
-
         /**
          * @param DockerComposeLocator[] $locators
          * @param string $dockerfilesTargetDir
          * @param string $composeFileTargetPath
          * @param string $sourceRoot
-         * @param bool $absolutePath
          */
         public function __construct(
             array $locators,
             string $dockerfilesTargetDir,
             string $composeFileTargetPath,
-            string $sourceRoot,
-            bool $absolutePath = false
+            string $sourceRoot
         ) {
             $this->locators = $locators;
             $this->dockerfileCompiler = new DockerfileCompiler(
@@ -51,7 +46,6 @@
             );
             $this->sourceRoot = $sourceRoot;
             $this->composeFileTargetPath = $composeFileTargetPath;
-            $this->absolutePath = $absolutePath;
         }
 
         /**
@@ -59,7 +53,7 @@
          */
         public function compile(): void
         {
-            $this->dockerfileCompiler->compile($this->absolutePath);
+            $this->dockerfileCompiler->compile();
             $composeFileDir = FileHelper::getAscendPath($this->composeFileTargetPath);
             if($this->locators){
                 $dockerComposeFiles = array_merge(
@@ -90,10 +84,7 @@
                 $merged = array_reduce(
                     array_map(
                         function (DockerComposeFile $dockerComposeFile): array {
-                            return $dockerComposeFile->getCompiled(
-                                $this->sourceRoot,
-                                $this->absolutePath
-                            );
+                            return $dockerComposeFile->getCompiled($this->sourceRoot);
                         },
                         $dockerComposeFiles
                     ),

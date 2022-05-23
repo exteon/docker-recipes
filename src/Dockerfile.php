@@ -4,6 +4,7 @@
 
     use Exception;
     use Exteon\FileHelper;
+    use RuntimeException;
 
     class Dockerfile
     {
@@ -44,15 +45,13 @@
         /**
          * @param TemplateCompileContext $context
          * @param string $targetDir
-         * @param bool $absolutePath
          * @throws Exception
          */
         public function compile(
             TemplateCompileContext $context,
-            string $targetDir,
-            bool $absolutePath = false
+            string $targetDir
         ): void {
-            $content = $this->template->getCompiled($context, $absolutePath);
+            $content = $this->template->compile($context, $targetDir);
             $content =
                 "# Compiled from dockerfile $this->name ($this->path)\n\n" .
                 $content;

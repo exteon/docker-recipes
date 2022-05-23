@@ -97,13 +97,11 @@
 
         /**
          * @param string $contextPath
-         * @param bool $absolutePath
          * @return array
          * @throws Exception
          */
         public function getCompiled(
-            string $contextPath,
-            bool $absolutePath = false
+            string $contextPath
         ): array {
             $cfg = Yaml::parseFile($this->dockerComposeFilePath);
             if (!$cfg['services'] ?? []) {
@@ -161,22 +159,12 @@
                     if(!is_array($service['build'] ?? null)){
                         $service['build'] = [];
                     }
-                    $service['build']['context'] =
-                        $absolutePath ?
-                            $contextPath :
-                            FileHelper::getRelativePath(
-                                $contextPath,
-                                $this->targetDir,
-                                true
-                            );
-                    $service['build']['dockerfile'] =
-                        $absolutePath ?
-                            $dockerfile->getTargetPath() :
-                            FileHelper::getRelativePath(
-                                $dockerfile->getTargetPath(),
-                                $contextPath,
-                                true
-                            );
+                    $service['build']['context'] = FileHelper::getRelativePath($contextPath, $this->targetDir, true);
+                    $service['build']['dockerfile'] = FileHelper::getRelativePath(
+                        $dockerfile->getTargetPath(),
+                        $contextPath,
+                        true
+                    );
                 }
                 if (is_array($service['volumes'] ?? null)) {
                     foreach ($service['volumes'] as &$volume) {
