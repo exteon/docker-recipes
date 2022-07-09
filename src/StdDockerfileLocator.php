@@ -8,8 +8,8 @@
     class StdDockerfileLocator implements DockerfileLocator
     {
         const TEMPLATES_DIR = 'templates';
-        /** @var string */
-        private $path;
+
+        private string $path;
 
         public function __construct(string $path)
         {
@@ -23,17 +23,13 @@
         public function getTemplates(): array
         {
             return array_map(
-                function (string $path): Template {
-                    return new Template(
-                        $path,
-                        $this->path
-                    );
-                },
+                fn(array $path): Template => new Template(
+                    $path['path'],
+                    $path['name'],
+                    $path['appEnv']
+                ),
                 $this->getDockerfilePaths(
-                    FileHelper::getDescendPath(
-                        $this->path,
-                        static::TEMPLATES_DIR
-                    ),
+                    self::TEMPLATES_DIR,
                     []
                 )
             );
@@ -41,36 +37,52 @@
 
         /**
          * @param string[] $excludeSubdirs
-         * @return string[]
+         * @return array<array{ path: string, name: string, appEnv: string }>
          */
         private function getDockerfilePaths(
-            string $path,
+            ?string $appEnvSubpath,
             array $excludeSubdirs
         ): array {
             $result = [];
-            if (is_dir($path)) {
-                $dockerfile = $path . '/Dockerfile';
-                if (file_exists($dockerfile)) {
-                    $result[] = $dockerfile;
-                } else {
-                    $subdirs = FileHelper::getChildren($path);
-                    foreach ($subdirs as $subdir) {
-                        if (
-                            is_dir($subdir) &&
-                            !in_array(
-                                pathinfo($subdir, PATHINFO_BASENAME),
-                                $excludeSubdirs
-                            )
-                        ) {
-                            $dockerfile = $subdir . '/Dockerfile';
-                            if (file_exists($dockerfile)) {
-                                $result[] = $dockerfile;
+            if (is_dir($this->path)) {
+                $appEnvs = FileHelper::getChildren($this->path);
+                foreach ($appEnvs as $appEnvPath) {
+                    $appEnv = pathinfo($appEnvPath, PATHINFO_BASENAME);
+                    if (
+                        is_dir($appEnvPath) &&
+                        !in_array(
+                            $appEnv,
+                            $excludeSubdirs
+                        )
+                    ) {
+                        if ($appEnvSubpath) {
+                            $appEnvPath = FileHelper::getDescendPath($appEnvPath, $appEnvSubpath);
+                        }
+                        $dockerfile = FileHelper::getDescendPath($appEnvPath, 'Dockerfile');
+                        if (file_exists($dockerfile)) {
+                            $result[] = [
+                                'path' => $dockerfile,
+                                'name' => $appEnv,
+                                'appEnv' => ''
+                            ];
+                        } elseif (is_dir($appEnvPath)) {
+                            $namePaths = FileHelper::getChildren($appEnvPath);
+                            foreach ($namePaths as $namePath) {
+                                $name = pathinfo($namePath, PATHINFO_BASENAME);
+                                if(!in_array($name,$excludeSubdirs)){
+                                    $dockerfile = FileHelper::getDescendPath($namePath, 'Dockerfile');
+                                    if (file_exists($dockerfile)) {
+                                        $result[] = [
+                                            'path' => $dockerfile,
+                                            'name' => $name,
+                                            'appEnv' => $appEnv
+                                        ];
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            } elseif (file_exists($path)) {
-                $result[] = $path;
             }
             return $result;
         }
@@ -82,14 +94,13 @@
         public function getDockerfiles(): array
         {
             return array_map(
-                function (string $path): Dockerfile {
-                    return new Dockerfile(
-                        $path,
-                        $this->path
-                    );
-                },
+                fn(array $path): Dockerfile => new Dockerfile(
+                    $path['path'],
+                    $path['name'],
+                    $path['appEnv']
+                ),
                 $this->getDockerfilePaths(
-                    $this->path,
+                    null,
                     [static::TEMPLATES_DIR]
                 )
             );

@@ -7,22 +7,23 @@
     class TemplateCompileContext
     {
         /** @var Template[] */
-        private $templates;
+        private array $templates;
 
         /** @var SplObjectStorage<Template,bool> */
-        private $isTemplateUsed;
+        private SplObjectStorage $isTemplateUsed;
 
-        /** @var string */
-        private $contextPath;
+        /** @var string[] */
+        private array $appEnv;
 
         /**
          * @param Template[] $templates
+         * @param string[] $appEnv
          */
-        public function __construct(array $templates, string $contextPath)
+        public function __construct(array $templates, array $appEnv = null)
         {
             $this->templates = $templates;
             $this->isTemplateUsed = new SplObjectStorage();
-            $this->contextPath = $contextPath;
+            $this->appEnv = $appEnv;
         }
 
         /**
@@ -44,10 +45,10 @@
         }
 
         /**
-         * @return string
+         * @return string[]
          */
-        public function getContextPath(): string
+        public function getAppEnv(): array
         {
-            return $this->contextPath;
+            return $this->appEnv;
         }
     }

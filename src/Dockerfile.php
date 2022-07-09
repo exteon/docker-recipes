@@ -4,47 +4,27 @@
 
     use Exception;
     use Exteon\FileHelper;
-    use RuntimeException;
 
     class Dockerfile
     {
-        /** @var string */
-        private $path;
-
-        /** @var string */
-        private $dir;
-
-        /** @var string */
-        private $name;
-
-        /** @var string */
-        private $targetPath;
-
-        /** @var string */
-        private $relPath;
-
-        /** @var Template */
-        private $template;
+        private string $path;
+        private string $name;
+        private string $targetPath;
+        private Template $template;
+        private string $appEnv;
 
         /**
-         * @param string $path
-         * @param string $basePath
          * @throws Exception
          */
-        public function __construct(
-            string $path,
-            string $basePath
-        ) {
+        public function __construct(string $path, string $name, string $appEnv)
+        {
             $this->path = $path;
-            $this->dir = dirname($path);
-            $this->name = pathinfo($this->dir, PATHINFO_BASENAME);
-            $this->relPath = FileHelper::getRelativePath($path, $basePath);
-            $this->template = new Template($path, $basePath);
+            $this->name = $name;
+            $this->template = new Template($path, $name, $appEnv);
+            $this->appEnv = $appEnv;
         }
 
         /**
-         * @param TemplateCompileContext $context
-         * @param string $targetDir
          * @throws Exception
          */
         public function compile(
@@ -52,24 +32,34 @@
             string $targetDir
         ): void {
             $content = $this->template->compile($context, $targetDir);
-            $content =
-                "# Compiled from dockerfile $this->name ($this->path)\n\n" .
-                $content;
-            $this->targetPath = FileHelper::getDescendPath(
-                $targetDir,
-                $this->relPath
-            );
+            $content = "# Compiled from dockerfile $this->name ($this->path)\n\n" . $content;
+            $targetPath = $targetDir;
+            if ($this->appEnv) {
+                $targetPath = FileHelper::getDescendPath($targetPath, $this->appEnv);
+            }
+            $this->targetPath = FileHelper::getDescendPath($targetPath, $this->name, 'Dockerfile');
             if (!FileHelper::preparePath($this->targetPath, true)) {
                 throw new Exception('Could not create target dir');
             }
             file_put_contents($this->targetPath, $content);
         }
 
+        public function getTargetPath(): string
+        {
+            return $this->targetPath;
+        }
+
+        /**
+         * @return string
+         */
         public function getPath(): string
         {
             return $this->path;
         }
 
+        /**
+         * @return string
+         */
         public function getName(): string
         {
             return $this->name;
@@ -78,16 +68,8 @@
         /**
          * @return string
          */
-        public function getDir(): string
+        public function getAppEnv(): string
         {
-            return $this->dir;
-        }
-
-        /**
-         * @return string
-         */
-        public function getTargetPath(): string
-        {
-            return $this->targetPath;
+            return $this->appEnv;
         }
     }

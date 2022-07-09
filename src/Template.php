@@ -8,27 +8,20 @@
 
     class Template
     {
-        /** @var string */
-        private $path;
-
-        /** @var string */
-        private $name;
-
-        /** @var string */
-        private $basePath;
-
-        /** @var string */
-        private $dir;
+        private string $path;
+        private string $name;
+        private string $dir;
+        private string $appEnv;
 
         /**
          * @throws Exception
          */
-        public function __construct(string $path, string $basePath)
+        public function __construct(string $path, string $name, string $appEnv)
         {
             $this->path = $path;
             $this->dir = dirname($path);
-            $this->name = pathinfo(dirname($path), PATHINFO_BASENAME);
-            $this->basePath = $basePath;
+            $this->name = $name;
+            $this->appEnv = $appEnv;
         }
 
         /**
@@ -39,7 +32,7 @@
             string $targetDir
         ): string {
             $context->setTemplateUsed($this);
-            $TEMPLATE_DIR = $this->getName();
+            $TEMPLATE_DIR = ($this->appEnv ? $this->appEnv . '/' : '') . $this->name;
             $contextPath = FileHelper::getDescendPath($targetDir, $TEMPLATE_DIR);
 
             {
@@ -59,7 +52,7 @@
                     $descendants &&
                     !is_dir($contextPath)
                 ) {
-                    if(!FileHelper::preparePath($contextPath)){
+                    if (!FileHelper::preparePath($contextPath)) {
                         throw new RuntimeException('Could not create context dir');
                     }
                     foreach ($descendants as $descendantPath) {
@@ -71,7 +64,7 @@
                             }
                         } else {
                             if (!copy($descendantPath, $descendantContextPath)) {
-                                throw new \RangeException('Could not copy context file');
+                                throw new RuntimeException('Could not copy context file');
                             }
                         }
                     }
@@ -83,8 +76,7 @@
                 $content,
                 $TEMPLATE_DIR
             );
-            $content = $this->parseTemplates($content, $context, $targetDir);
-            return $content;
+            return $this->parseTemplates($content, $context, $targetDir);
         }
 
         private function getContent(): string
@@ -104,9 +96,6 @@
         }
 
         /**
-         * @param string $content
-         * @param TemplateCompileContext $context
-         * @return string
          * @throws Exception
          */
         private function parseTemplates(
@@ -117,8 +106,15 @@
             return preg_replace_callback(
                 '`^#TEMPLATE\\[\\s*(\\S*?)\\s*]\\s*$`m',
                 function ($match) use ($context, $targetDir): string {
-                    $templateName = trim($match[1]);
-                    $template = $this->pickTemplate($templateName, $context);
+                    $fullName = trim($match[1]);
+                    if (preg_match('`^(.*?)/(.*)$`', $fullName, $match)) {
+                        $templateName = $match[2];
+                        $templateAppEnv = $match[1];
+                    } else {
+                        $templateName = $fullName;
+                        $templateAppEnv = null;
+                    }
+                    $template = $this->pickTemplate($templateName, $templateAppEnv, $context);
                     if (!$template) {
                         throw new Exception("Unknown template $templateName");
                     }
@@ -126,7 +122,9 @@
                         return '';
                     }
                     return
-                        "# Compiled from template $templateName ({$template->getPath()})\n" .
+                        "# Compiled from template $templateName" .
+                        ($template->getAppEnv() ? '.' . $template->getAppEnv() : '') .
+                        " ({$template->getPath()})\n" .
                         $template->compile($context, $targetDir);
                 },
                 $content
@@ -134,60 +132,58 @@
         }
 
         /**
-         * @param string $templateName
-         * @param TemplateCompileContext $context
-         * @return Template|null
          * @throws Exception
          */
         private function pickTemplate(
             string $templateName,
+            ?string $templateAppEnv,
             TemplateCompileContext $context
         ): ?Template {
-            $externalTemplates = [];
-            $ownTemplate = null;
-            foreach ($context->getTemplates() as $template) {
-                if ($template->getName() === $templateName) {
-                    if ($template->getBasePath() === $this->basePath) {
-                        if ($ownTemplate) {
-                            throw new Exception(
-                                'Ambiguous own template "' . $templateName . '"'
-                            );
-                        }
-                        $ownTemplate = $template;
+            if ($templateAppEnv !== null) {
+                foreach ($context->getTemplates() as $template) {
+                    if (
+                        $template->getName() === $templateName &&
+                        $template->getAppEnv() === $templateAppEnv
+                    ) {
+                        return $template;
                     }
-                    $externalTemplates[] = $template;
                 }
-            }
-            if ($externalTemplates) {
-                if (count($externalTemplates) > 1) {
-                    throw new Exception(
-                        'Ambiguous external template "' . $templateName . '"'
-                    );
+            } else {
+                foreach ($context->getAppEnv() as $appEnv) {
+                    foreach ($context->getTemplates() as $template) {
+                        if (
+                            $template->getName() === $templateName &&
+                            $template->getAppEnv() === $appEnv
+                        ) {
+                            return $template;
+                        }
+                    }
                 }
-                return reset($externalTemplates);
+                foreach ($context->getTemplates() as $template) {
+                    if (
+                        $template->getName() === $templateName &&
+                        $template->getAppEnv() === ''
+                    ) {
+                        return $template;
+                    }
+                }
             }
             return null;
         }
 
-        /**
-         * @return string
-         */
         public function getName(): string
         {
             return $this->name;
         }
 
-        public function getBasePath(): string
-        {
-            return $this->basePath;
-        }
-
-        /**
-         * @return string
-         */
         public function getPath(): string
         {
             return $this->path;
+        }
+
+        public function getAppEnv(): string
+        {
+            return $this->appEnv;
         }
 
     }

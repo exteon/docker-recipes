@@ -4,33 +4,37 @@
 
     use Exception;
     use Exteon\FileHelper;
+    use Exteon\FileHelper\Exception\NotAPrefixException;
     use Symfony\Component\Yaml\Yaml;
 
     class DockerComposeCompiler
     {
-        /** @var DockerfileCompiler */
-        private $dockerfileCompiler;
+        private DockerfileCompiler $dockerfileCompiler;
 
         /** @var DockerComposeLocator[] */
-        private $locators;
+        private array $locators;
 
-        /** @var string */
-        private $sourceRoot;
+        private string $sourceRoot;
+        private string $composeFileTargetPath;
 
-        /** @var string */
-        private $composeFileTargetPath;
+        /** @var string[] */
+        private array $appEnv;
+
+        private string $composeFileTargetContext;
 
         /**
          * @param DockerComposeLocator[] $locators
          * @param string $dockerfilesTargetDir
          * @param string $composeFileTargetPath
          * @param string $sourceRoot
+         * @param string[] $appEnv
          */
         public function __construct(
             array $locators,
             string $dockerfilesTargetDir,
             string $composeFileTargetPath,
-            string $sourceRoot
+            string $sourceRoot,
+            array $appEnv = ['']
         ) {
             $this->locators = $locators;
             $this->dockerfileCompiler = new DockerfileCompiler(
@@ -42,10 +46,12 @@
                     $locators
                 ),
                 $dockerfilesTargetDir,
-                $sourceRoot
+                $appEnv
             );
             $this->sourceRoot = $sourceRoot;
             $this->composeFileTargetPath = $composeFileTargetPath;
+            $this->composeFileTargetContext = dirname($composeFileTargetPath);
+            $this->appEnv = $appEnv;
         }
 
         /**
@@ -54,43 +60,24 @@
         public function compile(): void
         {
             $this->dockerfileCompiler->compile();
-            $composeFileDir = FileHelper::getAscendPath($this->composeFileTargetPath);
-            if($this->locators){
+            if ($this->locators) {
                 $dockerComposeFiles = array_merge(
                     ...array_map(
                        /**
-                        * @param DockerComposeLocator $locator
                         * @return DockerComposeFile[]
-                        * @throws Exception
                         */
-                           function (DockerComposeLocator $locator) use ($composeFileDir): array {
-                               $dockerComposeFilePath = $locator->getDockerComposeFile(
-                               );
-                               if ($dockerComposeFilePath !== null) {
-                                   return [
-                                       new DockerComposeFile(
-                                           $dockerComposeFilePath,
-                                           $this->dockerfileCompiler->getDockerfiles(
-                                           ),
-                                           $composeFileDir
-                                       )
-                                   ];
-                               }
-                               return [];
-                           },
+                           fn(DockerComposeLocator $locator): array => $locator->getDockerComposeFiles(),
                            $this->locators
                        )
                 );
                 $merged = array_reduce(
                     array_map(
-                        function (DockerComposeFile $dockerComposeFile): array {
-                            return $dockerComposeFile->getCompiled($this->sourceRoot);
-                        },
+                        [$this,'compileDockerComposeFile'],
                         $dockerComposeFiles
                     ),
                     [DockerComposeFile::class, 'mergeConfigs']
                 );
-                if (!FileHelper::preparePath($composeFileDir)) {
+                if (!FileHelper::preparePath($this->composeFileTargetContext)) {
                     throw new Exception("Cannot create target dir");
                 }
                 file_put_contents(
@@ -99,4 +86,210 @@
                 );
             }
         }
+
+        /**
+         * @throws Exception
+         */
+        private function findDockerfile(
+            ?string $dockerfilePath,
+            ?string $image,
+        ): ?Dockerfile {
+            $dockerfiles = $this->dockerfileCompiler->getDockerfiles();
+            if ($dockerfilePath !== null) {
+                foreach ($dockerfiles as $dockerfile) {
+                    if ($dockerfile->getPath() === $dockerfilePath) {
+                        return $dockerfile;
+                    }
+                }
+                return null;
+            }
+            if ($image !== null) {
+                if (preg_match('`^(.*?)/(.*)$`', $image, $match)) {
+                    $appEnv = $match[1];
+                    $imageName = $match[2];
+                } else {
+                    $appEnv = null;
+                    $imageName = $image;
+                }
+                if ($appEnv !== null) {
+                    foreach ($dockerfiles as $dockerfile) {
+                        if (
+                            $dockerfile->getName() === $imageName &&
+                            $dockerfile->getAppEnv() === $appEnv
+                        ) {
+                            return $dockerfile;
+                        }
+                    }
+                } else {
+                    foreach ($this->appEnv as $comAppEnv) {
+                        foreach ($dockerfiles as $dockerfile) {
+                            if (
+                                $dockerfile->getName() === $imageName &&
+                                $dockerfile->getAppEnv() === $comAppEnv
+                            ) {
+                                return $dockerfile;
+                            }
+                        }
+                    }
+                    foreach ($dockerfiles as $dockerfile) {
+                        if (
+                            $dockerfile->getName() === $imageName &&
+                            $dockerfile->getAppEnv() === ''
+                        ) {
+                            return $dockerfile;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        /**
+         * @throws Exception
+         */
+        public function mapPath(string $relPath, DockerComposeFile $dockerComposeFile): string
+        {
+            if (
+                preg_match(
+                    '`^\s*\$\{PROJECT_DIR(?:-.*?)?}(.*)`',
+                    $relPath,
+                    $match
+                )
+            ) {
+                $absPath = FileHelper::applyRelativePath(
+                    $this->sourceRoot,
+                    $match[1],
+                    true
+                );
+            } else {
+                $absPath = FileHelper::applyRelativePath(
+                    $dockerComposeFile->getContext(),
+                    $relPath,
+                    true
+                );
+            }
+            try {
+                return
+                    './' .
+                    FileHelper::getRelativePath($absPath, $this->composeFileTargetContext);
+            } catch (NotAPrefixException) {
+                return $absPath;
+            }
+        }
+
+        /**
+         * @throws NotAPrefixException
+         * @throws Exception
+         */
+        function compileDockerComposeFile(DockerComposeFile $dockerComposeFile): array
+        {
+            $cfg = $dockerComposeFile->getContent();
+            if (!$cfg['services'] ?? []) {
+                return $cfg;
+            }
+
+            foreach ($cfg['services'] as &$service) {
+                $contextEff = $service['build'] ?? null;
+                if (is_array($contextEff)) {
+                    $contextEff = $contextEff['context'] ?? null;
+                }
+                $context =
+                    $contextEff ??
+                    $dockerComposeFile->getContext();
+                $dockerfile =
+                    $service['build']['dockerfile'] ??
+                    'Dockerfile';
+                if (!FileHelper::isAbsolutePath($dockerfile)) {
+                    $dockerfile = FileHelper::applyRelativePath(
+                        $context,
+                        $dockerfile
+                    );
+                }
+                if (!FileHelper::isAbsolutePath($dockerfile)) {
+                    $dockerfile = FileHelper::applyRelativePath(
+                        $dockerComposeFile->getContext(),
+                        $dockerfile
+                    );
+                }
+                if (
+                    $contextEff !== null ||
+                    ($service['build']['dockerfile'] ?? null) !== null
+                ) {
+                    $explicitDockerfile = $dockerfile;
+                } else {
+                    $explicitDockerfile = null;
+                }
+
+                $image = $service['image'] ?? null;
+                if (
+                    $image !== null &&
+                    preg_match(
+                        '`^(.*):[^/]*$`',
+                        $image,
+                        $match
+                    )
+                ) {
+                    $image = $match[1];
+                }
+                $dockerfile = $this->findDockerfile($explicitDockerfile, $image);
+                if ($dockerfile) {
+                    if (!is_array($service['build'] ?? null)) {
+                        $service['build'] = [];
+                    }
+                    $service['build']['context'] = FileHelper::getRelativePath(
+                        $this->sourceRoot,
+                        $this->composeFileTargetContext,
+                        true
+                    );
+                    $service['build']['dockerfile'] = FileHelper::getRelativePath(
+                        $dockerfile->getTargetPath(),
+                        $this->sourceRoot,
+                        true
+                    );
+                }
+                if (is_array($service['volumes'] ?? null)) {
+                    foreach ($service['volumes'] as &$volume) {
+                        if (is_string($volume)) {
+                            $volumeParts = explode(':', $volume);
+                            $volume = [];
+                            $last = array_pop($volumeParts);
+                            if (preg_match($last[0], '[a-zA-Z0-9]')) {
+                                $volume['mode'] = $last;
+                                $volume['target'] = array_pop($volumeParts);
+                            } else {
+                                $volume['target'] = $last;
+                            }
+                            if ($volumeParts) {
+                                $volume['source'] = array_pop($volumeParts);
+                                if (
+                                    preg_match(
+                                        $volume['source'][0],
+                                        '[a-zA-Z0-9]'
+                                    )
+                                ) {
+                                    $volume['type'] = 'volume';
+                                } else {
+                                    $volume['type'] = 'bind';
+                                }
+                            } else {
+                                $volume['type'] = 'bind';
+                            }
+                        }
+                        if (
+                            $volume['type'] === 'bind' &&
+                            $volume['source'][0] !== '/' &&
+                            $volume['source'][0] !== '~'
+                        ) {
+                            $volume['source'] = $this->mapPath($volume['source'], $dockerComposeFile);
+                        }
+                    }
+                    unset($volume);
+                }
+            }
+            unset($service);
+
+            return $cfg;
+        }
+
+
     }

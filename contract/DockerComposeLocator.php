@@ -4,10 +4,10 @@
 
     interface DockerComposeLocator
     {
-        public function getDockerComposeFile(): ?string;
-
         /**
-         * @return DockerfileLocator
+         * @return DockerComposeFile[]
          */
+        public function getDockerComposeFiles(): array;
+
         public function getDockerfileLocator(): DockerfileLocator;
     }

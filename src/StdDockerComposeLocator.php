@@ -6,27 +6,29 @@
 
     class StdDockerComposeLocator implements DockerComposeLocator
     {
-        /** @var string */
-        private $path;
+        private string $path;
+        private StdDockerfileLocator $dockerfileLocator;
 
-        /** @var StdDockerfileLocator */
-        private $dockerfileLocator;
+        /** @var string[] */
+        private array $appEnv;
 
-        public function __construct(string $path){
+        public function __construct(string $path, array $appEnv = ['common'])
+        {
             $this->path = $path;
             $this->dockerfileLocator = new StdDockerfileLocator($path);
+            $this->appEnv = $appEnv;
         }
 
-        public function getDockerComposeFile(): ?string
+        public function getDockerComposeFiles(): array
         {
-            $filename = FileHelper::getDescendPath(
-                $this->path,
-                'docker-compose.yml'
-            );
-            if (file_exists($filename)) {
-                return $filename;
+            $result = [];
+            foreach (array_reverse($this->appEnv) as $appEnv) {
+                $filename = FileHelper::getDescendPath($this->path, $appEnv, 'docker-compose.yml');
+                if (file_exists($filename)) {
+                    $result[] = new DockerComposeFile($filename);
+                }
             }
-            return null;
+            return $result;
         }
 
         /**

@@ -4,34 +4,34 @@
 
     use Exception;
     use Exteon\FileHelper;
+    use RuntimeException;
 
     class DockerfileCompiler
     {
-        /** @var string */
-        private $targetDir;
+        private string $targetDir;
 
         /** @var DockerfileLocator[] */
-        private $locators;
+        private array $locators;
 
         /** @var Dockerfile[] */
-        private $dockerfiles;
+        private ?array $dockerfiles = null;
 
-        /** @var string */
-        private $sourceRoot;
+        /** @var string[]  */
+        private array $appEnv;
 
         /**
          * @param DockerfileLocator[] $locators
          * @param string $targetDir
-         * @param string $sourceRoot
+         * @param string[] $appEnv
          */
         public function __construct(
             array $locators,
             string $targetDir,
-            string $sourceRoot
+            array $appEnv = ['']
         ) {
             $this->targetDir = $targetDir;
             $this->locators = $locators;
-            $this->sourceRoot = $sourceRoot;
+            $this->appEnv = $appEnv;
         }
 
         /**
@@ -39,7 +39,7 @@
          */
         public function compile(): void
         {
-            if($this->locators){
+            if ($this->locators) {
                 /** @var Template[] $templates */
                 $templates = array_merge(
                     ...
@@ -55,15 +55,15 @@
                         $this->locators
                     )
                 );
-                if(
+                if (
                     file_exists($this->targetDir) &&
-                    !FileHelper::rmDir($this->targetDir,false)
-                ){
-                    throw new \RuntimeException('Could not clean target dir');
+                    !FileHelper::rmDir($this->targetDir, false)
+                ) {
+                    throw new RuntimeException('Could not clean target dir');
                 }
                 foreach ($this->getDockerfiles() as $dockerfile) {
                     $dockerfile->compile(
-                        new TemplateCompileContext($templates, $this->sourceRoot),
+                        new TemplateCompileContext($templates, $this->appEnv),
                         $this->targetDir
                     );
                 }

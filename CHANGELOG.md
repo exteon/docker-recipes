@@ -1,3 +1,15 @@
+# 3.0.0
+
+#### Changes
+
+* Requires PHP 8.0
+* `DockerComposeLocator` interface changed
+* `DockerfileCompiler` constructor signature changed
+
+#### New features
+
+* Added app env functionality
+
 # 2.0.0
 
 #### Changes
