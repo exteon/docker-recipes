@@ -204,7 +204,7 @@ above, will produce:
 So for every source image, there will be a target image compiled from the 
 templates.
 
-#<a name="docker-compose-compiling"></a> docker-compose compiling
+# <a name="docker-compose-compiling"></a> docker-compose compiling
 
 Compiling recipes for `docker-compose` is done using `DockerComposeCompiler`,
 which compiles both images (the same as `DockerfileCompiler`, and a 
