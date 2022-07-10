@@ -14,26 +14,27 @@
         /** @var DockerComposeLocator[] */
         private array $locators;
 
-        private string $sourceRoot;
+        private string $projectRoot;
         private string $composeFileTargetPath;
 
         /** @var string[] */
         private array $appEnv;
 
         private string $composeFileTargetContext;
+        private string $dockerfilesTargetDir;
 
         /**
          * @param DockerComposeLocator[] $locators
          * @param string $dockerfilesTargetDir
          * @param string $composeFileTargetPath
-         * @param string $sourceRoot
+         * @param string $projectRoot
          * @param string[] $appEnv
          */
         public function __construct(
             array $locators,
             string $dockerfilesTargetDir,
             string $composeFileTargetPath,
-            string $sourceRoot,
+            string $projectRoot,
             array $appEnv = ['']
         ) {
             $this->locators = $locators;
@@ -48,10 +49,11 @@
                 $dockerfilesTargetDir,
                 $appEnv
             );
-            $this->sourceRoot = $sourceRoot;
+            $this->projectRoot = $projectRoot;
             $this->composeFileTargetPath = $composeFileTargetPath;
             $this->composeFileTargetContext = dirname($composeFileTargetPath);
             $this->appEnv = $appEnv;
+            $this->dockerfilesTargetDir = $dockerfilesTargetDir;
         }
 
         /**
@@ -157,7 +159,7 @@
                 )
             ) {
                 $absPath = FileHelper::applyRelativePath(
-                    $this->sourceRoot,
+                    $this->projectRoot,
                     $match[1],
                     true
                 );
@@ -237,13 +239,13 @@
                         $service['build'] = [];
                     }
                     $service['build']['context'] = FileHelper::getRelativePath(
-                        $this->sourceRoot,
+                        $this->dockerfilesTargetDir,
                         $this->composeFileTargetContext,
                         true
                     );
                     $service['build']['dockerfile'] = FileHelper::getRelativePath(
                         $dockerfile->getTargetPath(),
-                        $this->sourceRoot,
+                        $this->dockerfilesTargetDir,
                         true
                     );
                 }
