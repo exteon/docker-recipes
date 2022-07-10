@@ -1,3 +1,9 @@
+### 3.0.1
+
+#### Bugfixes
+
+* Context dir computation for docker-compose.yml
+
 # 3.0.0
 
 #### Changes
